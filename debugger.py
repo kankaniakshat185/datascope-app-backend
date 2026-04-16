@@ -31,6 +31,13 @@ def run_all_checks(df: pd.DataFrame, target_col: str):
         
     # Sort by severity (HIGH > MEDIUM > LOW)
     severity_order = {"HIGH": 3, "MEDIUM": 2, "LOW": 1}
-    final_results.sort(key=lambda x: severity_order.get(x["severity"], 0), reverse=True)
-    
-    return final_results
+    final_results.sort(
+    key=lambda x: (x["impact"], severity_order.get(x["severity"], 0)),
+    reverse=True
+)
+    total_impact = sum([item["impact"] for item in final_results if item["impact"] > 0])
+
+    return {
+    "issues": final_results,
+    "total_impact": round(total_impact, 2)
+}

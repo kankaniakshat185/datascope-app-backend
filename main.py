@@ -19,8 +19,8 @@ async def analyze_dataset(file: UploadFile = File(...)):
         target_col = df.columns[-1]
 
         results = run_all_checks(df, target_col)
+        return results
         
-        return {"issues": results}
     except Exception as e:
         import traceback
         traceback.print_exc()

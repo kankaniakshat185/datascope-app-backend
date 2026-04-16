@@ -1,67 +1,88 @@
-def format_suggestions(issue: dict, impact_percentage: float) -> dict:
+def format_suggestions(issue: dict, impact: float) -> dict:
     """
-    Transforms raw issue dictionary into UI-ready suggestion with severity and impact.
+    Converts raw issue into structured UI-friendly output.
+    Keeps impact numeric for sorting + string for display.
     """
+
     issue_type = issue.get("type")
-    
-    # Assign default severity based on impact
-    if impact_percentage > 5.0 or issue_type in ["data_leakage", "class_imbalance"]:
+    impact_val = float(impact) if isinstance(impact, (int, float)) else 0.0
+
+    # ----------------------------
+    # 🔥 Priority based on IMPACT
+    # ----------------------------
+    if impact_val > 5 or issue_type in ["data_leakage"]:
         severity = "HIGH"
-    elif impact_percentage > 2.0 or issue_type in ["high_correlation", "missing_values", "outliers"]:
+    elif impact_val > 2:
         severity = "MEDIUM"
     else:
         severity = "LOW"
-        
-    # Hardcode data leakage to high
-    if issue_type == "data_leakage": severity = "HIGH"
-        
+
+    # ----------------------------
+    # Base structure
+    # ----------------------------
     formatted = {
         "type": issue_type,
         "severity": severity,
-        "impact": f"+{impact_percentage}%" if impact_percentage >= 0 else f"{impact_percentage}%",
+        "impact": impact_val,  # ✅ numeric for sorting
+        "impact_display": f"+{round(impact_val, 2)}%" if impact_val >= 0 else f"{round(impact_val, 2)}%",
         "description": "",
-        "suggestion": ""
+        "suggestion": "",
     }
-    
+
+    # ----------------------------
+    # Issue-specific formatting
+    # ----------------------------
+
     if issue_type == "missing_values":
-        col = issue.get("column")
-        perc = issue.get("percentage")
-        formatted["description"] = f"Missing values in '{col}' ({perc:.1f}%)"
-        formatted["suggestion"] = "Median Imputation" if "age" in col.lower() or "price" in col.lower() else "Impute missing values"
-        
+        col = issue.get("column", "unknown")
+        perc = issue.get("percentage", 0)
+
+        formatted["description"] = f"Missing values in '{col}' ({perc:.1f}%) affecting model reliability"
+
+        if isinstance(col, str) and any(k in col.lower() for k in ["age", "price", "amount"]):
+            formatted["suggestion"] = "Use median imputation for robustness"
+        else:
+            formatted["suggestion"] = "Impute missing values (mean/median/mode)"
+
     elif issue_type == "class_imbalance":
-        ratio = issue.get("ratio")
-        formatted["description"] = f"Class Imbalance ({ratio})"
-        formatted["suggestion"] = "Apply SMOTE or Class Weights"
-        
+        ratio = issue.get("ratio", "unknown")
+
+        formatted["description"] = f"Severe class imbalance detected ({ratio})"
+        formatted["suggestion"] = "Apply SMOTE, oversampling, or class weights"
+
     elif issue_type == "high_correlation":
-        col = issue.get("column")
-        corrs = ", ".join(issue.get("correlated_with", []))
-        formatted["description"] = f"Highly correlated features ({col}, {corrs})"
-        formatted["suggestion"] = f"Drop redundant column: {col}"
-        
+        col = issue.get("column", "unknown")
+        corrs = issue.get("correlated_with", [])
+
+        formatted["description"] = f"Feature '{col}' is highly correlated with {', '.join(corrs)}"
+        formatted["suggestion"] = f"Drop '{col}' to reduce multicollinearity"
+
     elif issue_type == "outliers":
-        perc = issue.get("percentage")
-        formatted["description"] = f"Outliers detected ({perc:.1f}% of data)"
-        formatted["suggestion"] = "Remove or cap extreme values (e.g. IQR method)"
-        
+        perc = issue.get("percentage", 0)
+
+        formatted["description"] = f"Outliers detected ({perc:.1f}% of data) impacting model stability"
+        formatted["suggestion"] = "Remove or cap extreme values using IQR or Z-score"
+
     elif issue_type == "data_leakage":
-        col = issue.get("column")
-        formatted["description"] = f"Data Leakage: '{col}' is perfectly predicting the target"
-        formatted["suggestion"] = f"Drop '{col}' to prevent model memorization"
-        
+        col = issue.get("column", "unknown")
+
+        formatted["description"] = f"Data leakage: '{col}' is strongly correlated with target"
+        formatted["suggestion"] = f"Remove '{col}' to prevent model overfitting"
+
     elif issue_type == "uniqueness_violation":
-        col = issue.get("column")
-        formatted["description"] = f"ID column '{col}' has duplicate rows"
-        formatted["suggestion"] = "Remove duplicate IDs"
-        
+        col = issue.get("column", "unknown")
+
+        formatted["description"] = f"Duplicate values found in ID column '{col}'"
+        formatted["suggestion"] = "Ensure unique identifiers or drop duplicates"
+
     elif issue_type == "high_cardinality":
-        col = issue.get("column")
-        formatted["description"] = f"Categorical column '{col}' has too many unique values"
-        formatted["suggestion"] = "Drop column or apply target encoding"
-        
+        col = issue.get("column", "unknown")
+
+        formatted["description"] = f"Column '{col}' has very high cardinality"
+        formatted["suggestion"] = "Apply encoding (target/embedding) or drop feature"
+
     else:
-        formatted["description"] = f"Generic issue detected: {issue_type}"
-        formatted["suggestion"] = "Investigate further"
-        
+        formatted["description"] = f"Detected issue: {issue_type}"
+        formatted["suggestion"] = "Further investigation required"
+
     return formatted

@@ -14,9 +14,25 @@ async def analyze_dataset(file: UploadFile = File(...)):
         contents = await file.read()
         df = pd.read_csv(io.BytesIO(contents))
         
-        # We need a target column for some checks (classification/regression)
-        # For simplicity, we assume the last column is the target
-        target_col = df.columns[-1]
+        # Ensure we drop completely empty artifact trailing columns 
+        df = df.dropna(axis=1, how='all')
+        
+        # We need a target column for some ML checks
+        # Instead of blindly picking the last column which might be an ID or empty, we use a robust heuristic
+        target_col = df.columns[-1] 
+        for col in reversed(df.columns):
+            # Skip artifact columns
+            if str(col).startswith("Unnamed:"): continue
+            
+            # Skip if more than 50% missing
+            if (df[col].isnull().sum() / len(df)) > 0.5: continue
+            
+            nunique = df[col].nunique()
+            # Skip if it has 1 value (too static) or is purely an ID (all values unique)
+            if nunique < 2 or (nunique == len(df) and len(df) > 10): continue
+            
+            target_col = col
+            break
 
         results = run_all_checks(df, target_col)
         return results

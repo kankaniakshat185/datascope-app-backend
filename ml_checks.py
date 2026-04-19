@@ -37,21 +37,30 @@ def run_ml_checks(df: pd.DataFrame, target_col: str) -> list:
                     "correlated_with": correlated_with,
                 })
     
-    # 3. Outliers (using Isolation Forest on numerical features)
+    # 3. Outliers (using IQR on numerical features per column)
     if len(num_df.columns) > 0:
-        # Fill na with mean just for Isolation Forest
-        temp_df = num_df.fillna(num_df.mean())
-        iso_forest = IsolationForest(contamination=0.05, random_state=42)
-        outlier_preds = iso_forest.fit_predict(temp_df)
-        outlier_count = (outlier_preds == -1).sum()
-        outlier_perc = (outlier_count / len(df)) * 100
-        
-        if outlier_perc > 1:
-            issues.append({
-                "type": "outliers",
-                "percentage": outlier_perc,
-                "count": int(outlier_count)
-            })
+        for col in num_df.columns:
+            series = num_df[col].dropna()
+            if len(series) < 10:
+                continue
+            q1 = series.quantile(0.25)
+            q3 = series.quantile(0.75)
+            iqr = q3 - q1
+            lower_bound = q1 - 1.5 * iqr
+            upper_bound = q3 + 1.5 * iqr
+            
+            outliers = series[(series < lower_bound) | (series > upper_bound)]
+            outlier_count = len(outliers)
+            
+            if len(series) > 0:
+                outlier_perc = (outlier_count / len(series)) * 100
+                if outlier_perc > 1:
+                    issues.append({
+                        "type": "outliers",
+                        "column": col,
+                        "percentage": outlier_perc,
+                        "count": int(outlier_count)
+                    })
 
     # 4. Data Leakage (feature highly correlated with target) 
     if target_col in num_df.columns:

@@ -58,9 +58,10 @@ def format_suggestions(issue: dict, impact: float) -> dict:
         formatted["suggestion"] = f"Drop '{col}' to reduce multicollinearity"
 
     elif issue_type == "outliers":
+        col = issue.get("column", "unknown")
         perc = issue.get("percentage", 0)
 
-        formatted["description"] = f"Outliers detected ({perc:.1f}% of data) impacting model stability"
+        formatted["description"] = f"Outliers detected in '{col}' ({perc:.1f}% of data) impacting model stability"
         formatted["suggestion"] = "Remove or cap extreme values using IQR or Z-score"
 
     elif issue_type == "data_leakage":

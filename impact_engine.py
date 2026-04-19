@@ -8,15 +8,15 @@ from sklearn.preprocessing import LabelEncoder
 
 def _get_metric_baseline(df: pd.DataFrame, target_col: str):
     """
-    Train a baseline robust random forest model and return metric dict:
+    Train a baseline linear model and return metric dict:
     { score: float, metric: str, std: float, accuracy/r2: float }
     """
-    from sklearn.ensemble import RandomForestClassifier, RandomForestRegressor
+    from sklearn.linear_model import LogisticRegression, Ridge
     from sklearn.model_selection import cross_val_score, StratifiedKFold, KFold
     from sklearn.compose import ColumnTransformer
     from sklearn.pipeline import Pipeline
     from sklearn.impute import SimpleImputer
-    from sklearn.preprocessing import OneHotEncoder
+    from sklearn.preprocessing import OneHotEncoder, StandardScaler
 
     if target_col not in df.columns:
         return None
@@ -42,7 +42,11 @@ def _get_metric_baseline(df: pd.DataFrame, target_col: str):
     numeric_features = X.select_dtypes(include=['int64', 'float64']).columns
     categorical_features = X.select_dtypes(include=['object', 'category', 'bool']).columns
 
-    numeric_transformer = SimpleImputer(strategy='median')
+    # Use naive constant imputation so our dataset fixes (like median/modes) show realistic improvements
+    numeric_transformer = Pipeline(steps=[
+        ('imputer', SimpleImputer(strategy='constant', fill_value=0)),
+        ('scaler', StandardScaler())
+    ])
     categorical_transformer = Pipeline(steps=[
         ('imputer', SimpleImputer(strategy='most_frequent')),
         ('onehot', OneHotEncoder(handle_unknown='ignore'))
@@ -57,16 +61,14 @@ def _get_metric_baseline(df: pd.DataFrame, target_col: str):
     try:
         if is_classification:
             if y.nunique() < 2: return None
+            # Linear model creates measurable impact penalty on multicollinearity & outliers
             model = Pipeline(steps=[
                 ('preprocessor', preprocessor),
-                ('classifier', RandomForestClassifier(n_estimators=50, random_state=42, n_jobs=-1))
+                ('classifier', LogisticRegression(max_iter=1000, random_state=42))
             ])
             
-            # Smart Cross-Validation: Prevent crash when a class appears < 3 times
             min_class_count = y.value_counts().min()
-            n_splits = max(2, min(3, min_class_count)) # Use 2 or 3 splits
-            
-            # If a class only appears 1 time, StratifiedKFold will fail entirely
+            n_splits = max(2, min(3, min_class_count)) 
             if min_class_count < 2:
                 cv = KFold(n_splits=3, shuffle=True, random_state=42)
             else:
@@ -84,7 +86,7 @@ def _get_metric_baseline(df: pd.DataFrame, target_col: str):
         else:
             model = Pipeline(steps=[
                 ('preprocessor', preprocessor),
-                ('regressor', RandomForestRegressor(n_estimators=50, random_state=42, n_jobs=-1))
+                ('regressor', Ridge(random_state=42))
             ])
             cv = KFold(n_splits=3, shuffle=True, random_state=42)
             

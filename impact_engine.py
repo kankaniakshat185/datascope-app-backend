@@ -101,8 +101,9 @@ def _get_metric_baseline(df: pd.DataFrame, target_col: str):
             }
 
     except Exception as e:
-        print("Model training error:", e)
-        return None
+        import traceback
+        traceback.print_exc()
+        return {"error": f"Model training err: {str(e)}"}
 
 
 def calculate_impact(df: pd.DataFrame, target_col: str, issue: dict):
@@ -112,15 +113,17 @@ def calculate_impact(df: pd.DataFrame, target_col: str, issue: dict):
     try:
         baseline_data = _get_metric_baseline(df, target_col)
 
-        if not baseline_data:
+        if not baseline_data or "error" in baseline_data:
+            err_msg = baseline_data["error"] if baseline_data else "Target column has critically low data."
             return {
                 "impact": 0.0,
                 "baseline_score": None,
                 "after_score": None,
                 "metric": None,
-                "confidence_score": 0.0
+                "confidence_score": 0.0,
+                "error_msg": err_msg
             }
-
+            
         baseline_score = baseline_data["score"]
         metric_name = baseline_data["metric"]
         baseline_std = baseline_data.get("std", 0.0)
@@ -214,11 +217,13 @@ def calculate_impact(df: pd.DataFrame, target_col: str, issue: dict):
         return result
 
     except Exception as e:
-        print("Impact Engine error:", e)
+        import traceback
+        traceback.print_exc()
         return {
             "impact": 0.0,
             "baseline_score": None,
             "after_score": None,
             "metric": None,
-            "confidence_score": 0.0
+            "confidence_score": 0.0,
+            "error_msg": f"Engine Crash: {str(e)}"
         }

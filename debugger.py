@@ -48,6 +48,9 @@ def run_all_checks(df: pd.DataFrame, target_col: str):
             
         if "eval_metrics" in impact_data:
             formatted_issue["eval_metrics"] = impact_data["eval_metrics"]
+            
+        if "error_msg" in impact_data:
+            formatted_issue["description"] = f"CRITICAL DIAGNOSTIC ERROR: {impact_data['error_msg']}"
 
         final_results.append(formatted_issue)
 

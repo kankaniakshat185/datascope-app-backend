@@ -61,7 +61,16 @@ def _get_metric_baseline(df: pd.DataFrame, target_col: str):
                 ('preprocessor', preprocessor),
                 ('classifier', RandomForestClassifier(n_estimators=50, random_state=42, n_jobs=-1))
             ])
-            cv = StratifiedKFold(n_splits=3, shuffle=True, random_state=42)
+            
+            # Smart Cross-Validation: Prevent crash when a class appears < 3 times
+            min_class_count = y.value_counts().min()
+            n_splits = max(2, min(3, min_class_count)) # Use 2 or 3 splits
+            
+            # If a class only appears 1 time, StratifiedKFold will fail entirely
+            if min_class_count < 2:
+                cv = KFold(n_splits=3, shuffle=True, random_state=42)
+            else:
+                cv = StratifiedKFold(n_splits=n_splits, shuffle=True, random_state=42)
             
             f1_scores = cross_val_score(model, X, y, cv=cv, scoring='f1_macro')
             accuracy_scores = cross_val_score(model, X, y, cv=cv, scoring='accuracy')

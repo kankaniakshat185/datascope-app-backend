@@ -38,25 +38,71 @@ def get_target_column(df: pd.DataFrame) -> str:
 
 app = FastAPI(title="Dataset Debugger ML Service")
 
-@app.post("/analyze")
-async def analyze_dataset(file: UploadFile = File(...)):
+async def parse_uploaded_file(file: UploadFile) -> pd.DataFrame:
     file_ext = file.filename.split('.')[-1].lower()
     supported_exts = ['csv', 'xlsx', 'xls', 'json', 'parquet']
     
     if file_ext not in supported_exts:
         raise HTTPException(status_code=400, detail=f"Unsupported file format. Supported: {', '.join(supported_exts)}")
     
-    try:
-        contents = await file.read()
+    contents = await file.read()
+    
+    if file_ext == 'csv':
+        df = pd.read_csv(io.BytesIO(contents))
+    elif file_ext in ['xlsx', 'xls']:
+        df = pd.read_excel(io.BytesIO(contents))
+    elif file_ext == 'json':
+        df = pd.read_json(io.BytesIO(contents))
+    elif file_ext == 'parquet':
+        df = pd.read_parquet(io.BytesIO(contents))
+    else:
+        raise HTTPException(status_code=400, detail="Unsupported file format")
+    
+    return df
+
+def generate_data_dictionary(df: pd.DataFrame) -> dict:
+    total_rows = len(df)
+    dictionary = []
+    
+    for col in df.columns:
+        col_series = df[col]
+        dtype = str(col_series.dtype)
+        missing_count = int(col_series.isnull().sum())
+        missing_percentage = round((missing_count / total_rows) * 100, 2) if total_rows > 0 else 0
+        unique_count = int(col_series.nunique())
         
-        if file_ext == 'csv':
-            df = pd.read_csv(io.BytesIO(contents))
-        elif file_ext in ['xlsx', 'xls']:
-            df = pd.read_excel(io.BytesIO(contents))
-        elif file_ext == 'json':
-            df = pd.read_json(io.BytesIO(contents))
-        elif file_ext == 'parquet':
-            df = pd.read_parquet(io.BytesIO(contents))
+        # Convert sample values to native Python types
+        sample_values = [v.item() if hasattr(v, 'item') else v for v in col_series.dropna().unique()[:3]]
+        
+        col_info = {
+            "column_name": str(col),
+            "data_type": dtype,
+            "missing_count": missing_count,
+            "missing_percentage": missing_percentage,
+            "unique_count": unique_count,
+            "sample_values": sample_values
+        }
+        
+        if pd.api.types.is_numeric_dtype(col_series):
+            col_info["min"] = float(col_series.min()) if not pd.isna(col_series.min()) else None
+            col_info["max"] = float(col_series.max()) if not pd.isna(col_series.max()) else None
+            col_info["mean"] = float(col_series.mean()) if not pd.isna(col_series.mean()) else None
+        else:
+            mode_val = col_series.mode()
+            col_info["top_value"] = str(mode_val.iloc[0]) if not mode_val.empty else None
+            
+        dictionary.append(col_info)
+        
+    return {
+        "total_rows": total_rows,
+        "total_columns": len(df.columns),
+        "columns": dictionary
+    }
+
+@app.post("/analyze")
+async def analyze_dataset(file: UploadFile = File(...)):
+    try:
+        df = await parse_uploaded_file(file)
         
         # Attempt clean
         df = df.dropna(axis=1, how='all')
@@ -67,6 +113,20 @@ async def analyze_dataset(file: UploadFile = File(...)):
         results = run_all_checks(df, target_col)
         return results
         
+    except HTTPException as he:
+        raise he
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.post("/data-dictionary")
+async def get_data_dictionary(file: UploadFile = File(...)):
+    try:
+        df = await parse_uploaded_file(file)
+        return generate_data_dictionary(df)
+    except HTTPException as he:
+        raise he
     except Exception as e:
         import traceback
         traceback.print_exc()

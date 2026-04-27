@@ -163,7 +163,8 @@ def generate_eda_data(df: pd.DataFrame) -> dict:
                 counts, bin_edges = np.histogram(col_data, bins=10)
                 eda_results["distributions"][col] = {
                     "labels": [f"{round(bin_edges[i], 2)} - {round(bin_edges[i+1], 2)}" for i in range(len(counts))],
-                    "counts": counts.tolist()
+                    "counts": counts.tolist(),
+                    "bin_edges": bin_edges.tolist()
                 }
             except Exception:
                 pass
@@ -348,8 +349,11 @@ async def detect_drift(
                 if len(test_data) == 0:
                     continue
                     
-                bin_edges = dist["bin_edges"]
-                train_counts = dist["hist"]
+                bin_edges = dist.get("bin_edges")
+                if not bin_edges:
+                    continue
+                    
+                train_counts = dist.get("counts", [])
                 
                 train_total = sum(train_counts)
                 if train_total == 0:

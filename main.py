@@ -1,4 +1,4 @@
-from fastapi import FastAPI, UploadFile, File, HTTPException
+from fastapi import FastAPI, UploadFile, File, HTTPException, Form
 import pandas as pd
 import numpy as np
 import io
@@ -101,9 +101,18 @@ def generate_data_dictionary(df: pd.DataFrame) -> dict:
     }
 
 @app.post("/analyze")
-async def analyze_dataset(file: UploadFile = File(...)):
+async def analyze_dataset(file: UploadFile = File(...), rules: str = Form(None)):
     try:
         df = await parse_uploaded_file(file)
+        
+        # Parse rules
+        parsed_rules = []
+        if rules:
+            try:
+                import json
+                parsed_rules = json.loads(rules)
+            except Exception:
+                pass
         
         # Attempt clean
         df = df.dropna(axis=1, how='all')
@@ -111,7 +120,7 @@ async def analyze_dataset(file: UploadFile = File(...)):
         # Advanced target detection algorithm
         target_col = get_target_column(df)
 
-        results = run_all_checks(df, target_col)
+        results = run_all_checks(df, target_col, parsed_rules)
         return results
         
     except HTTPException as he:

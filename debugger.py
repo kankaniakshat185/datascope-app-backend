@@ -10,7 +10,7 @@ from ml_checks import run_ml_checks
 from impact_engine import calculate_impact
 from suggestions import format_suggestions
 
-def run_all_checks(df: pd.DataFrame, target_col: str):
+def run_all_checks(df: pd.DataFrame, target_col: str, custom_rules: list = None):
     """
     Main orchestrator for dataset debugger.
     """
@@ -23,6 +23,12 @@ def run_all_checks(df: pd.DataFrame, target_col: str):
     # 2. ML Checks
     ml_issues = run_ml_checks(df, target_col)
     issues.extend(ml_issues)
+    
+    # 2.5 Custom Rules
+    if custom_rules:
+        from validators import run_custom_rules
+        custom_issues = run_custom_rules(df, custom_rules)
+        issues.extend(custom_issues)
 
     final_results = []
 

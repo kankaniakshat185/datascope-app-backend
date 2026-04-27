@@ -92,6 +92,16 @@ def format_suggestions(issue: dict, impact: float) -> dict:
         formatted["severity"] = "HIGH" # Override to HIGH severity because it's a security risk
         formatted["impact"] = max(formatted["impact"], 10.0) # Ensure it sorts near the top
 
+    elif issue_type == "custom_rule_violation":
+        col = issue.get("column", "unknown")
+        rule_type = issue.get("rule_type", "")
+        expected = issue.get("expected", "")
+        
+        formatted["description"] = f"Rule Violation: '{col}' failed '{rule_type}' ({expected})"
+        formatted["suggestion"] = "Review the data points that violate your custom business logic"
+        formatted["severity"] = "HIGH"
+        formatted["impact"] = max(formatted["impact"], 8.0)
+
     else:
         formatted["description"] = f"Detected issue: {issue_type}"
         formatted["suggestion"] = "Further investigation required"

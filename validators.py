@@ -77,3 +77,39 @@ def run_validators(df: pd.DataFrame) -> list:
     issues.extend(pii_issues)
             
     return issues
+
+def run_custom_rules(df: pd.DataFrame, rules: list) -> list:
+    issues = []
+    
+    for rule in rules:
+        col = rule.get("column")
+        if not col or col not in df.columns:
+            continue
+            
+        rule_type = rule.get("type")
+        val = rule.get("value")
+        
+        col_data = df[col]
+        invalid_count = 0
+        
+        if rule_type == "min" and val is not None:
+            invalid_count = (pd.to_numeric(col_data, errors='coerce') < val).sum()
+        elif rule_type == "max" and val is not None:
+            invalid_count = (pd.to_numeric(col_data, errors='coerce') > val).sum()
+        elif rule_type == "in" and isinstance(val, list):
+            invalid_count = (~col_data.isin(val)).sum()
+        elif rule_type == "not_null":
+            invalid_count = col_data.isnull().sum()
+            
+        if invalid_count > 0:
+            percentage = (invalid_count / len(df)) * 100
+            issues.append({
+                "type": "custom_rule_violation",
+                "column": col,
+                "rule_type": rule_type,
+                "expected": val,
+                "percentage": percentage,
+                "count": int(invalid_count)
+            })
+            
+    return issues

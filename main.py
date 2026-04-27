@@ -2,7 +2,6 @@ from fastapi import FastAPI, UploadFile, File, HTTPException, Form
 import pandas as pd
 import numpy as np
 import io
-import shap
 from sklearn.ensemble import RandomForestRegressor, RandomForestClassifier
 from sklearn.preprocessing import LabelEncoder
 from debugger import run_all_checks
@@ -255,15 +254,8 @@ def generate_shap_values(df: pd.DataFrame, target_col: str) -> dict:
             
         model.fit(X_sample, y_sample)
         
-        explainer = shap.TreeExplainer(model)
-        shap_values = explainer.shap_values(X_sample)
-        
-        if is_classification and isinstance(shap_values, list):
-            vals = np.abs(shap_values[1]).mean(0)
-        elif len(shap_values.shape) == 3:
-             vals = np.abs(shap_values).mean(axis=(0, 2))
-        else:
-            vals = np.abs(shap_values).mean(0)
+        # Use native scikit-learn feature importances instead of SHAP to save 200MB+ in Vercel Serverless
+        vals = model.feature_importances_
             
         feature_importance = pd.DataFrame(list(zip(X.columns, vals)), columns=['col_name', 'feature_importance_vals'])
         feature_importance.sort_values(by=['feature_importance_vals'], ascending=False, inplace=True)

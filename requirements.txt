@@ -9,4 +9,3 @@ python-multipart
 openpyxl
 pyarrow
 xlrd
-shap

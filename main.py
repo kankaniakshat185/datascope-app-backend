@@ -1,4 +1,5 @@
 from fastapi import FastAPI, UploadFile, File, HTTPException, Form
+from fastapi.responses import StreamingResponse
 import pandas as pd
 import numpy as np
 import io
@@ -279,4 +280,52 @@ async def get_shap_values(file: UploadFile = File(...)):
         target_col = get_target_column(df)
         return generate_shap_values(df, target_col)
     except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.post("/clean")
+async def clean_dataset(file: UploadFile = File(...)):
+    try:
+        df = await parse_uploaded_file(file)
+        
+        # 1. Drop duplicates
+        df = df.drop_duplicates()
+        
+        # 2. Drop columns with > 50% missing values
+        missing_ratios = df.isnull().mean()
+        cols_to_drop = missing_ratios[missing_ratios > 0.5].index
+        df = df.drop(columns=cols_to_drop)
+        
+        # 3. Impute remaining missing values and cap outliers
+        for col in df.columns:
+            if pd.api.types.is_numeric_dtype(df[col]):
+                # Impute missing with median
+                if df[col].isnull().any():
+                    df[col] = df[col].fillna(df[col].median())
+                # Cap outliers (1st and 99th percentiles) to reduce extreme noise
+                q1 = df[col].quantile(0.01)
+                q99 = df[col].quantile(0.99)
+                df[col] = df[col].clip(lower=q1, upper=q99)
+            else:
+                # Impute categorical with mode
+                if df[col].isnull().any():
+                    mode_val = df[col].mode()
+                    if not mode_val.empty:
+                        df[col] = df[col].fillna(mode_val[0])
+                        
+        # Return as CSV stream
+        stream = io.StringIO()
+        df.to_csv(stream, index=False)
+        response = StreamingResponse(iter([stream.getvalue()]), media_type="text/csv")
+        
+        # Safely handle filename
+        safe_filename = file.filename if file.filename else "dataset.csv"
+        if not safe_filename.endswith(".csv"):
+            safe_filename = safe_filename.rsplit(".", 1)[0] + ".csv"
+            
+        response.headers["Content-Disposition"] = f"attachment; filename=cleaned_{safe_filename}"
+        return response
+        
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
         raise HTTPException(status_code=500, detail=str(e))

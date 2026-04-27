@@ -2,6 +2,9 @@ from fastapi import FastAPI, UploadFile, File, HTTPException, Form
 import pandas as pd
 import numpy as np
 import io
+import shap
+from sklearn.ensemble import RandomForestRegressor, RandomForestClassifier
+from sklearn.preprocessing import LabelEncoder
 from debugger import run_all_checks
 
 def get_target_column(df: pd.DataFrame) -> str:
@@ -208,3 +211,80 @@ async def get_eda(file: UploadFile = File(...)):
 @app.get("/")
 def health_check():
     return {"status": "ok"}
+
+def generate_shap_values(df: pd.DataFrame, target_col: str) -> dict:
+    if not target_col or target_col not in df.columns:
+        return {"error": "Target column not found"}
+        
+    df = df.dropna(subset=[target_col])
+    if len(df) == 0:
+        return {"error": "Target column contains only NaNs"}
+        
+    df_clean = df.copy()
+    
+    for col in df_clean.columns:
+        if df_clean[col].dtype == 'object' or df_clean[col].dtype.name == 'category':
+            le = LabelEncoder()
+            df_clean[col] = le.fit_transform(df_clean[col].astype(str))
+            
+    # Handle NaNs
+    for col in df_clean.columns:
+        if df_clean[col].isnull().any():
+            df_clean[col] = df_clean[col].fillna(df_clean[col].median() if pd.api.types.is_numeric_dtype(df_clean[col]) else 0)
+            
+    X = df_clean.drop(columns=[target_col])
+    y = df_clean[target_col]
+    
+    if len(X) == 0 or X.shape[1] == 0:
+        return {"error": "Not enough features for SHAP analysis"}
+        
+    if len(X) > 500:
+        X_sample = X.sample(500, random_state=42)
+        y_sample = y.loc[X_sample.index]
+    else:
+        X_sample = X
+        y_sample = y
+        
+    is_classification = df[target_col].nunique() < 10 or not pd.api.types.is_numeric_dtype(df[target_col])
+    
+    try:
+        if is_classification:
+            model = RandomForestClassifier(n_estimators=50, max_depth=5, random_state=42)
+        else:
+            model = RandomForestRegressor(n_estimators=50, max_depth=5, random_state=42)
+            
+        model.fit(X_sample, y_sample)
+        
+        explainer = shap.TreeExplainer(model)
+        shap_values = explainer.shap_values(X_sample)
+        
+        if is_classification and isinstance(shap_values, list):
+            vals = np.abs(shap_values[1]).mean(0)
+        elif len(shap_values.shape) == 3:
+             vals = np.abs(shap_values).mean(axis=(0, 2))
+        else:
+            vals = np.abs(shap_values).mean(0)
+            
+        feature_importance = pd.DataFrame(list(zip(X.columns, vals)), columns=['col_name', 'feature_importance_vals'])
+        feature_importance.sort_values(by=['feature_importance_vals'], ascending=False, inplace=True)
+        
+        top_features = feature_importance.head(10)
+        
+        return {
+            "target": target_col,
+            "features": top_features['col_name'].tolist(),
+            "importance": top_features['feature_importance_vals'].tolist()
+        }
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        return {"error": str(e)}
+
+@app.post("/shap")
+async def get_shap_values(file: UploadFile = File(...)):
+    try:
+        df = await parse_uploaded_file(file)
+        target_col = get_target_column(df)
+        return generate_shap_values(df, target_col)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))

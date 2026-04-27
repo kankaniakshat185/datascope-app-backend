@@ -1,5 +1,6 @@
 from fastapi import FastAPI, UploadFile, File, HTTPException
 import pandas as pd
+import numpy as np
 import io
 from debugger import run_all_checks
 
@@ -125,6 +126,63 @@ async def get_data_dictionary(file: UploadFile = File(...)):
     try:
         df = await parse_uploaded_file(file)
         return generate_data_dictionary(df)
+    except HTTPException as he:
+        raise he
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail=str(e))
+
+def generate_eda_data(df: pd.DataFrame) -> dict:
+    eda_results = {
+        "distributions": {},
+        "value_counts": {},
+        "correlation_matrix": None
+    }
+    
+    numeric_cols = df.select_dtypes(include=['int64', 'float64']).columns.tolist()
+    categorical_cols = df.select_dtypes(include=['object', 'category', 'bool']).columns.tolist()
+    
+    # 1. Distributions for Numeric Columns (Max 10 bins)
+    for col in numeric_cols:
+        col_data = df[col].dropna()
+        if len(col_data) > 0 and col_data.nunique() > 1:
+            try:
+                counts, bin_edges = np.histogram(col_data, bins=10)
+                eda_results["distributions"][col] = {
+                    "labels": [f"{round(bin_edges[i], 2)} - {round(bin_edges[i+1], 2)}" for i in range(len(counts))],
+                    "counts": counts.tolist()
+                }
+            except Exception:
+                pass
+                
+    # 2. Value Counts for Categorical Columns (Top 10)
+    for col in categorical_cols:
+        col_data = df[col].dropna()
+        if len(col_data) > 0:
+            val_counts = col_data.value_counts().head(10)
+            eda_results["value_counts"][col] = {
+                "labels": [str(k) for k in val_counts.index],
+                "counts": val_counts.values.tolist()
+            }
+            
+    # 3. Correlation Matrix (for numeric columns only)
+    if len(numeric_cols) > 1:
+        corr_df = df[numeric_cols].corr()
+        # Replace NaNs with 0 to avoid JSON serialization errors
+        corr_df = corr_df.fillna(0)
+        eda_results["correlation_matrix"] = {
+            "columns": numeric_cols,
+            "matrix": corr_df.values.tolist()
+        }
+        
+    return eda_results
+
+@app.post("/eda")
+async def get_eda(file: UploadFile = File(...)):
+    try:
+        df = await parse_uploaded_file(file)
+        return generate_eda_data(df)
     except HTTPException as he:
         raise he
     except Exception as e:

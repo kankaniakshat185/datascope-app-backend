@@ -222,7 +222,7 @@ def generate_shap_values(df: pd.DataFrame, target_col: str) -> dict:
     df_clean = df.copy()
     
     for col in df_clean.columns:
-        if df_clean[col].dtype == 'object' or df_clean[col].dtype.name == 'category':
+        if not pd.api.types.is_numeric_dtype(df_clean[col]):
             le = LabelEncoder()
             df_clean[col] = le.fit_transform(df_clean[col].astype(str))
             

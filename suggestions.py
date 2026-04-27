@@ -82,6 +82,16 @@ def format_suggestions(issue: dict, impact: float) -> dict:
         formatted["description"] = f"Column '{col}' has very high cardinality"
         formatted["suggestion"] = "Apply encoding (target/embedding) or drop feature"
 
+    elif issue_type == "pii_detected":
+        col = issue.get("column", "unknown")
+        pii_type = issue.get("pii_type", "Sensitive Data")
+        perc = issue.get("percentage", 0)
+        
+        formatted["description"] = f"Security Risk: '{col}' contains {pii_type} ({perc:.1f}%)"
+        formatted["suggestion"] = "Anonymize, hash, or drop this column before training!"
+        formatted["severity"] = "HIGH" # Override to HIGH severity because it's a security risk
+        formatted["impact"] = max(formatted["impact"], 10.0) # Ensure it sorts near the top
+
     else:
         formatted["description"] = f"Detected issue: {issue_type}"
         formatted["suggestion"] = "Further investigation required"

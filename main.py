@@ -329,3 +329,62 @@ async def clean_dataset(file: UploadFile = File(...)):
         import traceback
         traceback.print_exc()
         raise HTTPException(status_code=500, detail=str(e))
+
+@app.post("/drift")
+async def detect_drift(
+    test_file: UploadFile = File(...), 
+    train_distributions: str = Form(...)
+):
+    import json
+    try:
+        train_dist = json.loads(train_distributions)
+        test_df = await parse_uploaded_file(test_file)
+        
+        drift_results = []
+        
+        for col, dist in train_dist.items():
+            if col in test_df.columns and pd.api.types.is_numeric_dtype(test_df[col]):
+                test_data = test_df[col].dropna()
+                if len(test_data) == 0:
+                    continue
+                    
+                bin_edges = dist["bin_edges"]
+                train_counts = dist["hist"]
+                
+                train_total = sum(train_counts)
+                if train_total == 0:
+                    continue
+                train_pct = np.array(train_counts) / train_total
+                
+                epsilon = 0.0001
+                train_pct = np.where(train_pct == 0, epsilon, train_pct)
+                
+                test_counts, _ = np.histogram(test_data, bins=bin_edges)
+                test_total = sum(test_counts)
+                
+                if test_total == 0:
+                    continue
+                test_pct = np.array(test_counts) / test_total
+                test_pct = np.where(test_pct == 0, epsilon, test_pct)
+                
+                psi_values = (test_pct - train_pct) * np.log(test_pct / train_pct)
+                psi_total = float(np.sum(psi_values))
+                
+                if psi_total > 0.1:
+                    drift_results.append({
+                        "column": col,
+                        "psi": psi_total,
+                        "severity": "HIGH" if psi_total > 0.2 else "MEDIUM"
+                    })
+                    
+        drift_results.sort(key=lambda x: x["psi"], reverse=True)
+        
+        return {
+            "drift_detected": len(drift_results) > 0,
+            "drifted_features": drift_results
+        }
+        
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail=str(e))

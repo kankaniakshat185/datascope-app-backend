@@ -160,6 +160,12 @@ def generate_eda_data(df: pd.DataFrame) -> dict:
     for col in categorical_cols:
         col_data = df[col].dropna()
         if len(col_data) > 0:
+            unique_vals = col_data.nunique()
+            # Skip high cardinality columns (e.g. Names, Phone Numbers, IDs)
+            # If it has >50 unique values OR is >50% unique, it's not a good category for a bar chart
+            if unique_vals > 50 or (unique_vals / len(col_data)) > 0.5:
+                continue
+                
             val_counts = col_data.value_counts().head(10)
             eda_results["value_counts"][col] = {
                 "labels": [str(k) for k in val_counts.index],

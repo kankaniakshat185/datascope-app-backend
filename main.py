@@ -40,12 +40,23 @@ app = FastAPI(title="Dataset Debugger ML Service")
 
 @app.post("/analyze")
 async def analyze_dataset(file: UploadFile = File(...)):
-    if not file.filename.endswith('.csv'):
-        raise HTTPException(status_code=400, detail="Only CSV files are supported")
+    file_ext = file.filename.split('.')[-1].lower()
+    supported_exts = ['csv', 'xlsx', 'xls', 'json', 'parquet']
+    
+    if file_ext not in supported_exts:
+        raise HTTPException(status_code=400, detail=f"Unsupported file format. Supported: {', '.join(supported_exts)}")
     
     try:
         contents = await file.read()
-        df = pd.read_csv(io.BytesIO(contents))
+        
+        if file_ext == 'csv':
+            df = pd.read_csv(io.BytesIO(contents))
+        elif file_ext in ['xlsx', 'xls']:
+            df = pd.read_excel(io.BytesIO(contents))
+        elif file_ext == 'json':
+            df = pd.read_json(io.BytesIO(contents))
+        elif file_ext == 'parquet':
+            df = pd.read_parquet(io.BytesIO(contents))
         
         # Attempt clean
         df = df.dropna(axis=1, how='all')
